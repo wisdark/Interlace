@@ -21,7 +21,7 @@ class InputHelper(object):
     def readable_file(parser, arg):
         if InputHelper.check_path(parser, arg):
             return open(arg, 'r')  # return an open file handle
-            
+
     @staticmethod
     def check_positive(parser, arg):
         try:
@@ -149,6 +149,10 @@ class InputHelper(object):
         for host in host_ranges:
             host = host.replace(" ", "").replace("\n", "")
             # check if it is a domain name
+            if len(host.split(".")[0]) == 0:
+                destination_set.add(host)
+                continue
+
             if host.split(".")[0][0].isalpha() or host.split(".")[-1][-1].isalpha():
                 destination_set.add(host)
                 continue
@@ -211,7 +215,7 @@ class InputHelper(object):
             for replacement in replacements:
                 if command.name().find(variable) != -1:
                     new_task = command.clone()
-                    new_task.replace(variable, replacement)
+                    new_task.replace(variable, str(replacement))
                     add_task(new_task, tasks, temp_set)
                 else:
                     add_task(command, tasks, temp_set)
