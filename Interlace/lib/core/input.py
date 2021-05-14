@@ -1,18 +1,15 @@
 import functools
 import itertools
 import os.path
+import socket
+import struct
 import sys
-from io import TextIOWrapper
 from argparse import ArgumentParser
+from io import TextIOWrapper
 from random import choice
 
-from netaddr import (
-    IPRange,
-    IPSet,
-    glob_to_iprange,
-)
-
 from Interlace.lib.threader import Task
+from netaddr import IPGlob, IPRange, IPSet, glob_to_iprange
 
 
 class InputHelper(object):
@@ -34,7 +31,7 @@ class InputHelper(object):
             ivalue = int(arg)
             if ivalue <= 0:
                 raise parser.ArgumentTypeError("%s is not a valid positive integer!" % arg)
-        except ValueError as e:
+        except ValueError:
             raise parser.ArgumentValueError("%s is not a a number!" % arg)
 
         return arg
@@ -133,6 +130,14 @@ class InputHelper(object):
                             "https://", "").rstrip("/").replace("/", "-"),
                     )
                     yield yielded_task
+            elif CLEANTARGET_VAR in command:
+                for dirty_target in itertools.chain(str_targets, ipset_targets):
+                    yielded_task = task.clone()
+                    dirty_target = str(dirty_target)
+                    yielded_task.replace(CLEANTARGET_VAR,dirty_target.replace(
+                        "http://", "").replace("https://", "").rstrip("/").replace("/", "-"),
+                        )
+                    yield yielded_task
             else:
                 yield task
 
@@ -183,7 +188,7 @@ class InputHelper(object):
 
         def parse_and_group_target_specs(target_specs, nocidr):
             str_targets = set()
-            ipset_targets = IPSet()
+            ips_list = list()
             for target_spec in target_specs:
                 if (
                     target_spec.startswith(".") or
@@ -200,9 +205,15 @@ class InputHelper(object):
                     elif "*" in target_spec:
                         target_spec = glob_to_iprange(target_spec)
                     else:  # str IP addresses and str CIDR notations
-                        target_spec = (target_spec,)
-                    ipset_targets.update(IPSet(target_spec))
-            return (str_targets, ipset_targets)
+                        if "/" in target_spec:
+                            target_spec = IPSet((target_spec,))
+                        else:
+                            target_spec = [target_spec]
+                    
+                    for i in target_spec:
+                        ips_list.append(str(i))
+                    print(f"updating: {target_spec}")
+            return (str_targets, set(ips_list))
 
         str_targets, ipset_targets = parse_and_group_target_specs(
             target_specs=target_specs,
@@ -226,6 +237,7 @@ class InputHelper(object):
                 target_specs=exclusion_specs,
                 nocidr=arguments.nocidr,
             )
+
             str_targets -= str_exclusions
             ipset_targets -= ipset_exclusions
 
@@ -246,7 +258,7 @@ class InputHelper(object):
         str_targets, ipset_targets = InputHelper._process_targets(
             arguments=arguments,
         )
-        targets_count = len(str_targets) + ipset_targets.size
+        targets_count = len(str_targets) + len(ipset_targets)
 
         if not targets_count:
             raise Exception("No target provided, or empty target list")
@@ -265,8 +277,6 @@ class InputHelper(object):
 
         if arguments.proto:
             protocols = arguments.proto.split(",")
-            # if "," not in arguments.proto, [arguments.proto] is returned by
-            # .split()
         else:
             protocols = None
 
@@ -492,7 +502,7 @@ class InputParser(object):
             '--repeat', dest='repeat',
             help='repeat the given command x number of times.'
         )
-        
+
         output_types = parser.add_mutually_exclusive_group()
         output_types.add_argument(
             '-v', '--verbose', dest='verbose', action='store_true', default=False,

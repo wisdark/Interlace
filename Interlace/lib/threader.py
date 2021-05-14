@@ -1,9 +1,15 @@
 import subprocess
+import os
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Event
-
 from tqdm import tqdm
 
+import platform
+
+if platform.system().lower() == 'linux':
+    shell = os.getenv("SHELL") if os.getenv("SHELL") else "/bin/sh"
+else:
+    shell = None
 
 class Task(object):
     def __init__(self, command):
@@ -47,23 +53,25 @@ class Task(object):
         return self.self_lock
 
     def _run_task(self, t=False):
-        if t:
-            s = subprocess.Popen(self.task, shell=True,
-                                 stdout=subprocess.PIPE,
-                                 encoding="utf-8")
-            out, _ = s.communicate()
-            if out != "":
+        s = subprocess.Popen(self.task, shell=True,
+                             stdout=subprocess.PIPE,
+                             encoding="utf-8",
+                             executable=shell)
+        out, _ = s.communicate()
+
+        if out != "":
+            if t:
                 t.write(out)
-        else:
-            subprocess.Popen(self.task, shell=True)
+            else:
+                print(out)
 
 
 class Worker(object):
-    def __init__(self, task_queue, timeout, output, tqdm):
+    def __init__(self, task_queue, timeout, output, tq):
         self.queue = task_queue
         self.timeout = timeout
         self.output = output
-        self.tqdm = tqdm
+        self.tqdm = tq
 
     def __call__(self):
         queue = self.queue
